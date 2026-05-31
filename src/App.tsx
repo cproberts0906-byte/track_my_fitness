@@ -6,8 +6,10 @@ type Exercise = {
   name: string;
   sets: number;
   reps: number;
-  weight: number;
+  weight?: number; // gym only
+  repsCompleted?: number; // hotel only
   muscle: string;
+  weighted: boolean;
 };
 
 type DayPlan = {
@@ -29,15 +31,16 @@ type WeightEntry = {
 type ExerciseHistory = {
   exercise: string;
   week: number;
-  weight: number;
+  value: number; // weight OR reps depending on mode
+  mode: Mode;
 };
 
 const STORAGE = {
-  plan: "fitness_week_plan_v4",
-  weight: "fitness_weight_v4",
-  history: "fitness_weight_history_v4",
-  exerciseHistory: "fitness_exercise_history_v4",
-  week: "fitness_week_v4",
+  plan: "fitness_week_plan_v5",
+  weight: "fitness_weight_v5",
+  history: "fitness_weight_history_v5",
+  exerciseHistory: "fitness_exercise_history_v5",
+  week: "fitness_week_v5",
 };
 
 // --------------------
@@ -48,12 +51,7 @@ const gym = {
   back: ["Lat Pulldown", "Seated Row", "Assisted Pull Up"],
   legs: ["Leg Press", "Leg Curl", "Leg Extension"],
   shoulders: ["Shoulder Press", "Lat Raises", "Reverse Pec Fly"],
-  arms: [
-    "Bicep Curl",
-    "Tricep Pushdown",
-    "Tricep Extension",
-    "Assisted Dip Machine",
-  ],
+  arms: ["Bicep Curl", "Tricep Pushdown", "Tricep Extension", "Assisted Dip Machine"],
   core: ["Sit-ups", "Bicycle Crunches", "Flutter Kicks", "Mountain Climbers"],
   legsExtras: ["Hip Abductor", "Hip Adductor", "Calf Raises"],
   full: ["Chest Press", "Lat Pulldown", "Leg Press", "Shoulder Press"],
@@ -84,13 +82,34 @@ const baseWeek = [
 ];
 
 // --------------------
-function makeExercise(name: string, muscle: string): Exercise {
+function isWeighted(name: string) {
+  const weightedList = [
+    "Chest Press",
+    "Pec Fly",
+    "Lat Pulldown",
+    "Seated Row",
+    "Leg Press",
+    "Leg Curl",
+    "Leg Extension",
+    "Shoulder Press",
+    "Bicep Curl",
+    "Tricep Pushdown",
+    "Tricep Extension",
+    "Assisted Dip Machine",
+  ];
+  return weightedList.includes(name);
+}
+
+// --------------------
+function makeExercise(name: string, muscle: string, weighted: boolean): Exercise {
   return {
     name,
     sets: 3,
     reps: 10,
-    weight: 0,
     muscle,
+    weighted,
+    weight: weighted ? 0 : undefined,
+    repsCompleted: !weighted ? 0 : undefined,
   };
 }
 
@@ -102,48 +121,51 @@ function buildPlan(mode: Mode): DayPlan[] {
     let exercises: Exercise[] = [];
     let cardio = "";
 
+    const add = (arr: string[], muscle: string) =>
+      arr.map((n) => makeExercise(n, muscle, mode === "gym" ? isWeighted(n) : false));
+
     switch (d.muscleGroup) {
       case "chest_shoulders":
         exercises = [
-          ...pool.chest.map((n) => makeExercise(n, "Chest")),
-          ...pool.shoulders.map((n) => makeExercise(n, "Shoulders")),
+          ...add(pool.chest, "Chest"),
+          ...add(pool.shoulders, "Shoulders"),
         ];
-        cardio = "Optional: 10–15 min incline walk";
+        cardio = "Optional incline walk";
         break;
 
       case "back_arms":
         exercises = [
-          ...pool.back.map((n) => makeExercise(n, "Back")),
-          ...pool.arms.map((n) => makeExercise(n, "Arms")),
+          ...add(pool.back, "Back"),
+          ...add(pool.arms, "Arms"),
         ];
-        cardio = "Optional: 10 min cardio";
         break;
 
       case "legs":
         exercises = [
-          ...pool.legs.map((n) => makeExercise(n, "Legs")),
+          ...add(pool.legs, "Legs"),
           ...(mode === "gym"
-            ? gym.legsExtras.map((n) => makeExercise(n, "Legs"))
+            ? gym.legsExtras.map((n) => makeExercise(n, "Legs", true))
             : []),
         ];
         break;
 
       case "chest_arms":
         exercises = [
-          ...pool.chest.map((n) => makeExercise(n, "Chest")),
-          ...pool.arms.map((n) => makeExercise(n, "Arms")),
+          ...add(pool.chest, "Chest"),
+          ...add(pool.arms, "Arms"),
         ];
-        cardio = "10 min incline walk";
         break;
 
       case "full":
-        exercises = pool.full.map((n) => makeExercise(n, "Full Body"));
-        cardio = "15–20 min cardio";
+        exercises = pool.full.map((n) =>
+          makeExercise(n, "Full Body", mode === "gym" ? isWeighted(n) : false)
+        );
         break;
 
       case "core_day":
-        exercises = pool.core.map((n) => makeExercise(n, "Core"));
-        cardio = "Optional HIIT 10 min";
+        exercises = pool.core.map((n) =>
+          makeExercise(n, "Core", false)
+        );
         break;
     }
 
@@ -173,22 +195,19 @@ export default function App() {
 
   // LOAD
   useEffect(() => {
-    const savedPlan = localStorage.getItem(STORAGE.plan);
-    const savedWeight = localStorage.getItem(STORAGE.weight);
-    const savedHistory = localStorage.getItem(STORAGE.history);
-    const savedEx = localStorage.getItem(STORAGE.exerciseHistory);
-    const savedWeek = localStorage.getItem(STORAGE.week);
+    const saved = {
+      plan: localStorage.getItem(STORAGE.plan),
+      weight: localStorage.getItem(STORAGE.weight),
+      history: localStorage.getItem(STORAGE.history),
+      ex: localStorage.getItem(STORAGE.exerciseHistory),
+      week: localStorage.getItem(STORAGE.week),
+    };
 
-    setPlan(savedPlan ? JSON.parse(savedPlan) : buildPlan(mode));
-
-    if (savedWeight) {
-      setWeight(JSON.parse(savedWeight));
-      setWeeklyWeight(JSON.parse(savedWeight));
-    }
-
-    if (savedHistory) setHistory(JSON.parse(savedHistory));
-    if (savedEx) setExerciseHistory(JSON.parse(savedEx));
-    if (savedWeek) setWeek(JSON.parse(savedWeek));
+    setPlan(saved.plan ? JSON.parse(saved.plan) : buildPlan(mode));
+    if (saved.weight) setWeight(JSON.parse(saved.weight));
+    if (saved.history) setHistory(JSON.parse(saved.history));
+    if (saved.ex) setExerciseHistory(JSON.parse(saved.ex));
+    if (saved.week) setWeek(JSON.parse(saved.week));
   }, []);
 
   // SAVE
@@ -218,73 +237,71 @@ export default function App() {
     setPlan(buildPlan(m));
   };
 
-  // SAVE EXERCISE WEIGHT
-  const saveExerciseWeight = (exercise: string, value: number) => {
+  // SAVE PERFORMANCE
+  const savePerformance = (ex: Exercise) => {
     setExerciseHistory([
       ...exerciseHistory,
-      { exercise, week, weight: value },
+      {
+        exercise: ex.name,
+        week,
+        value: mode === "gym" ? ex.weight || 0 : ex.repsCompleted || 0,
+        mode,
+      },
     ]);
   };
 
-  const getLastWeekWeight = (name: string) => {
+  const getLast = (name: string) => {
     const last = exerciseHistory
       .filter((e) => e.exercise === name && e.week === week - 1)
       .slice(-1)[0];
 
-    return last?.weight ?? 0;
+    return last?.value ?? 0;
   };
 
-  const getRecommendedWeight = (name: string) => {
-    const last = getLastWeekWeight(name);
-    if (!last) return 10;
-    return Math.round(last * 1.025);
+  const getRecommended = (ex: Exercise) => {
+    const last = getLast(ex.name);
+
+    if (mode === "gym") return Math.round(last * 1.025) || 10;
+    return last ? Math.min(last + 1, 20) : 8; // rep progression
   };
 
-  // UPDATE EXERCISE WEIGHT
-  const updateWeight = (dayIndex: number, exIndex: number, value: number) => {
-    const updated = [...plan];
-    updated[dayIndex].exercises[exIndex].weight = value;
-    setPlan(updated);
+  // UPDATE EXERCISE
+  const update = (di: number, ei: number, val: number) => {
+    const copy = [...plan];
+    const ex = copy[di].exercises[ei];
+
+    if (mode === "gym") ex.weight = val;
+    else ex.repsCompleted = val;
+
+    setPlan(copy);
   };
 
   // MARK DAY
   const mark = (i: number, type: "done" | "miss") => {
-    const updated = [...plan];
-    updated[i].completed = type === "done";
-    updated[i].missed = type === "miss";
+    const copy = [...plan];
+    copy[i].completed = type === "done";
 
     if (type === "done") {
-      updated[i].exercises.forEach((e) => {
-        saveExerciseWeight(e.name, e.weight);
-      });
+      copy[i].exercises.forEach(savePerformance);
     }
 
-    setPlan(updated);
+    setPlan(copy);
   };
 
   // WEIGHT TRACK
   const submitWeight = () => {
-    const entry: WeightEntry = {
-      date: new Date().toLocaleDateString(),
-      weight: weeklyWeight,
-      week,
-    };
+    setHistory([
+      {
+        date: new Date().toLocaleDateString(),
+        weight: weeklyWeight,
+        week,
+      },
+      ...history,
+    ]);
 
-    setHistory([entry, ...history]);
     setWeight(weeklyWeight);
     setWeek(week + 1);
   };
-
-  // TREND
-  const trend = useMemo(() => {
-    if (history.length < 2) return "Start tracking";
-
-    const diff = history[0].weight - history[1].weight;
-
-    if (diff < 0) return "Fat loss trending 👍";
-    if (diff === 0) return "Stable";
-    return "Adjust diet / add cardio";
-  }, [history]);
 
   return (
     <div style={{ padding: 20, fontFamily: "Arial", maxWidth: 900 }}>
@@ -298,7 +315,7 @@ export default function App() {
       </button>
 
       <h2>Weight</h2>
-      <p>Current: {weight} lbs</p>
+      <p>{weight} lbs</p>
 
       <input
         type="number"
@@ -306,42 +323,35 @@ export default function App() {
         onChange={(e) => setWeeklyWeight(Number(e.target.value))}
       />
 
-      <button onClick={submitWeight}>Submit Weekly Weight</button>
+      <button onClick={submitWeight}>Submit Week</button>
 
-      <p><strong>Coach:</strong> {trend}</p>
-
-      <h2>Workout Plan</h2>
+      <h2>Workout</h2>
 
       {plan.map((d, i) => (
         <div key={i} style={{ marginBottom: 20 }}>
           <strong>{d.day} — {d.focus}</strong>
 
           {d.exercises.map((e, j) => (
-            <div key={j}>
+            <div key={j} style={{ marginBottom: 8 }}>
               <div>
                 {e.name} — {e.sets}x{e.reps}
               </div>
 
               <div style={{ fontSize: 12 }}>
-                Last week: {getLastWeekWeight(e.name)} lbs |
-                Recommended: {getRecommendedWeight(e.name)} lbs
+                Last: {getLast(e.name)} |
+                Rec: {getRecommended(e)}
               </div>
 
               <input
                 type="number"
-                value={e.weight}
-                onChange={(ev) =>
-                  updateWeight(i, j, Number(ev.target.value))
-                }
+                value={mode === "gym" ? e.weight || 0 : e.repsCompleted || 0}
+                onChange={(ev) => update(i, j, Number(ev.target.value))}
                 style={{ width: 70 }}
               />
             </div>
           ))}
 
           <button onClick={() => mark(i, "done")}>Done</button>
-          <button onClick={() => mark(i, "miss")} style={{ marginLeft: 10 }}>
-            Missed
-          </button>
         </div>
       ))}
     </div>

@@ -15,6 +15,7 @@ type DayPlan = {
   focus: string;
   muscleGroup: string;
   exercises: Exercise[];
+  cardio?: string;
   completed: boolean;
   missed: boolean;
 };
@@ -25,114 +26,138 @@ type WeightEntry = {
 };
 
 const STORAGE = {
-  plan: "fitness_week_plan_v2",
-  weight: "fitness_weight_v2",
-  history: "fitness_history_v2",
+  plan: "fitness_week_plan_v3",
+  weight: "fitness_weight_v3",
+  history: "fitness_history_v3",
 };
 
 // --------------------
-// EXERCISE POOLS
+// GYM EXERCISES
 // --------------------
 const gym = {
   chest: ["Chest Press", "Pec Fly", "Incline Sit Ups"],
+
   back: ["Lat Pulldown", "Seated Row", "Assisted Pull Up"],
+
   legs: ["Leg Press", "Leg Curl", "Leg Extension"],
+
   shoulders: ["Shoulder Press", "Lat Raises", "Reverse Pec Fly"],
-  arms: ["Bicep Curl", "Tricep Pushdown", "Tricep Extension"],
-  full: ["Chest Press", "Lat Pulldown", "Leg Press", "Shoulder Press"],
+
+  arms: [
+    "Bicep Curl",
+    "Tricep Pushdown",
+    "Tricep Extension",
+    "Assisted Dip Machine", // FIXED
+  ],
+
+  core: ["Sit-ups", "Bicycle Crunches", "Flutter Kicks", "Mountain Climbers"],
+
+  legsExtras: ["Hip Abductor", "Hip Adductor", "Calf Raises"],
+
+  full: [
+    "Chest Press",
+    "Lat Pulldown",
+    "Leg Press",
+    "Shoulder Press",
+    "Assisted Dip Machine",
+  ],
 };
 
+// --------------------
+// HOTEL EXERCISES
+// --------------------
 const hotel = {
   chest: ["Push-ups", "Incline Push-ups", "Diamond Push-ups"],
-  back: ["Supermans", "Plank", "Burpees"],
+
+  back: ["Supermans", "Plank", "Mountain Climbers"],
+
   legs: ["Squats", "Lunges", "Wall Sit"],
-  shoulders: ["Pike Push-ups", "Arm Circles", "Push-ups"],
-  arms: ["Chair Dips", "Push-ups", "Plank"],
-  full: ["Burpees", "Push-ups", "Squats", "Lunges"],
+
+  shoulders: ["Pike Push-ups", "Arm Circles"],
+
+  arms: [
+    "Chair Dips", // FIXED
+    "Push-ups",
+  ],
+
+  core: ["Sit-ups", "Flutter Kicks", "Bicycle Crunches", "Mountain Climbers"],
+
+  full: ["Burpees", "Push-ups", "Squats", "Lunges", "Chair Dips"],
 };
 
+// --------------------
 const baseWeek = [
   { day: "Monday", focus: "Chest + Shoulders", muscleGroup: "chest_shoulders" },
   { day: "Tuesday", focus: "Back + Arms", muscleGroup: "back_arms" },
   { day: "Wednesday", focus: "Legs + Core", muscleGroup: "legs" },
   { day: "Thursday", focus: "Chest + Arms", muscleGroup: "chest_arms" },
   { day: "Friday", focus: "Full Body", muscleGroup: "full" },
-  { day: "Saturday", focus: "Rest", muscleGroup: "rest" },
+  { day: "Saturday", focus: "Core + Cardio", muscleGroup: "core_day" },
   { day: "Sunday", focus: "Rest", muscleGroup: "rest" },
 ];
 
 // --------------------
-// HELPERS
-// --------------------
-function pick(pool: string[], muscle: string): Exercise[] {
-  return pool.map((name) => ({
+function makeExercise(name: string, muscle: string): Exercise {
+  return {
     name,
     sets: 3,
     reps: 10,
     weight: 0,
     muscle,
-  }));
+  };
 }
 
-function buildPlan(mode: Mode, history: DayPlan[] = []): DayPlan[] {
+// --------------------
+function buildPlan(mode: Mode): DayPlan[] {
   const pool = mode === "gym" ? gym : hotel;
 
-  const usageCount: Record<string, number> = {};
-
-  const lastMuscle = history[0]?.muscleGroup;
-
-  return baseWeek.map((d, _i) => {
-    if (d.muscleGroup === "rest") {
-      return {
-        ...d,
-        exercises: [],
-        completed: false,
-        missed: false,
-      };
-    }
-
-    // prevent same muscle back-to-back
-    if (lastMuscle === d.muscleGroup) {
-      d = { ...d, muscleGroup: "rest", focus: "Recovery (Auto-adjusted)" };
-    }
-
-    usageCount[d.muscleGroup] = (usageCount[d.muscleGroup] || 0) + 1;
-
-    // limit max 2x/week
-    if (usageCount[d.muscleGroup] > 2) {
-      d = { ...d, muscleGroup: "rest", focus: "Recovery (Overuse Protection)" };
-    }
-
+  return baseWeek.map((d) => {
     let exercises: Exercise[] = [];
+    let cardio = "";
 
     switch (d.muscleGroup) {
       case "chest_shoulders":
         exercises = [
-          ...pick(pool.chest, "Chest"),
-          ...pick(pool.shoulders, "Shoulders"),
+          ...pool.chest.map((n) => makeExercise(n, "Chest")),
+          ...pool.shoulders.map((n) => makeExercise(n, "Shoulders")),
         ];
+        cardio = "Optional: 10–15 min incline walk";
         break;
 
       case "back_arms":
         exercises = [
-          ...pick(pool.back, "Back"),
-          ...pick(pool.arms, "Arms"),
+          ...pool.back.map((n) => makeExercise(n, "Back")),
+          ...pool.arms.map((n) => makeExercise(n, "Arms")),
         ];
+        cardio = "Optional: 10 min row or brisk walk";
         break;
 
       case "legs":
-        exercises = pick(pool.legs, "Legs");
+        exercises = [
+          ...pool.legs.map((n) => makeExercise(n, "Legs")),
+          ...(mode === "gym"
+            ? gym.legsExtras.map((n) => makeExercise(n, "Legs"))
+            : []),
+        ];
+        cardio = "Light walk optional";
         break;
 
       case "chest_arms":
         exercises = [
-          ...pick(pool.chest, "Chest"),
-          ...pick(pool.arms, "Arms"),
+          ...pool.chest.map((n) => makeExercise(n, "Chest")),
+          ...pool.arms.map((n) => makeExercise(n, "Arms")),
         ];
+        cardio = "10 min incline walk";
         break;
 
       case "full":
-        exercises = pick(pool.full, "Full Body");
+        exercises = pool.full.map((n) => makeExercise(n, "Full Body"));
+        cardio = "15–20 min cardio";
+        break;
+
+      case "core_day":
+        exercises = pool.core.map((n) => makeExercise(n, "Core"));
+        cardio = "Optional HIIT 10 min";
         break;
     }
 
@@ -141,14 +166,13 @@ function buildPlan(mode: Mode, history: DayPlan[] = []): DayPlan[] {
       focus: d.focus,
       muscleGroup: d.muscleGroup,
       exercises,
+      cardio,
       completed: false,
       missed: false,
     };
   });
 }
 
-// --------------------
-// APP
 // --------------------
 export default function App() {
   const [mode, setMode] = useState<Mode>("gym");
@@ -164,9 +188,7 @@ export default function App() {
     const savedWeight = localStorage.getItem(STORAGE.weight);
     const savedHistory = localStorage.getItem(STORAGE.history);
 
-    const parsedPlan = savedPlan ? JSON.parse(savedPlan) : buildPlan(mode);
-
-    setPlan(parsedPlan);
+    setPlan(savedPlan ? JSON.parse(savedPlan) : buildPlan(mode));
 
     if (savedWeight) {
       setWeight(JSON.parse(savedWeight));
@@ -192,30 +214,25 @@ export default function App() {
   // MODE SWITCH
   const switchMode = (m: Mode) => {
     setMode(m);
-    setPlan(buildPlan(m, plan));
+    setPlan(buildPlan(m));
   };
 
-  // MARK DAY + AUTO ADJUSTMENT
-  const mark = (index: number, type: "done" | "miss") => {
+  // UPDATE EXERCISE WEIGHT
+  const updateWeight = (dayIndex: number, exIndex: number, value: number) => {
     const updated = [...plan];
-
-    updated[index].completed = type === "done";
-    updated[index].missed = type === "miss";
-
-    // AUTO SHIFT RULE:
-    if (type === "miss") {
-      for (let i = index + 1; i < updated.length; i++) {
-        if (updated[i].muscleGroup !== "rest") {
-          updated[i].focus += " (Adjusted)";
-          break;
-        }
-      }
-    }
-
+    updated[dayIndex].exercises[exIndex].weight = value;
     setPlan(updated);
   };
 
-  // WEIGHT TRACKING (MONDAY)
+  // MARK DAY
+  const mark = (i: number, type: "done" | "miss") => {
+    const updated = [...plan];
+    updated[i].completed = type === "done";
+    updated[i].missed = type === "miss";
+    setPlan(updated);
+  };
+
+  // WEIGHT TRACKING
   const submitWeight = () => {
     const entry: WeightEntry = {
       date: new Date().toLocaleDateString(),
@@ -226,32 +243,26 @@ export default function App() {
     setWeight(weeklyWeight);
   };
 
-  // PROGRESS SUGGESTION
-  const suggestion = useMemo(() => {
-    if (history.length < 2) return "Keep training consistently";
+  // TREND
+  const trend = useMemo(() => {
+    if (history.length < 2) return "Start tracking weekly weight";
 
     const diff = history[0].weight - history[1].weight;
 
-    if (diff < 0) return "Good progress — maintain intensity";
-    if (diff === 0) return "Stable — increase weight slightly";
-    return "Weight up — tighten diet or increase cardio";
+    if (diff < 0) return "Fat loss trending 👍";
+    if (diff === 0) return "Stable — increase activity slightly";
+    return "Weight up — adjust diet or add cardio";
   }, [history]);
 
   return (
-    <div style={{ padding: 20, fontFamily: "Arial", maxWidth: 800 }}>
+    <div style={{ padding: 20, fontFamily: "Arial", maxWidth: 900 }}>
       <h1>Adaptive Fitness Planner</h1>
 
-      {/* MODE */}
-      <div>
-        <button onClick={() => switchMode("gym")}>Gym Mode</button>
-        <button onClick={() => switchMode("hotel")} style={{ marginLeft: 10 }}>
-          Hotel Mode
-        </button>
-      </div>
+      <button onClick={() => switchMode("gym")}>Gym</button>
+      <button onClick={() => switchMode("hotel")} style={{ marginLeft: 10 }}>
+        Hotel
+      </button>
 
-      <p><strong>Mode:</strong> {mode}</p>
-
-      {/* WEIGHT */}
       <h2>Weight Tracker</h2>
 
       <p>Current: {weight} lbs</p>
@@ -262,32 +273,34 @@ export default function App() {
         onChange={(e) => setWeeklyWeight(Number(e.target.value))}
       />
 
-      <button onClick={submitWeight} style={{ marginLeft: 10 }}>
-        Submit Weekly Weight
-      </button>
+      <button onClick={submitWeight}>Submit Weekly Weight</button>
 
-      <p><strong>Coach:</strong> {suggestion}</p>
+      <p><strong>Coach:</strong> {trend}</p>
 
-      {/* PLAN */}
-      <h2>Weekly Plan (Auto-Adjusted)</h2>
+      <h2>Weekly Plan</h2>
 
       {plan.map((d, i) => (
-        <div key={i} style={{ marginBottom: 15 }}>
-          <strong>
-            {d.day} — {d.focus}
-          </strong>
+        <div key={i} style={{ marginBottom: 20 }}>
+          <strong>{d.day} — {d.focus}</strong>
 
-          {d.exercises.length === 0 ? (
-            <p>Rest / Recovery</p>
-          ) : (
-            <ul>
-              {d.exercises.map((e, j) => (
-                <li key={j}>
-                  {e.name} — {e.sets}x{e.reps}
-                </li>
-              ))}
-            </ul>
-          )}
+          {d.cardio && <p style={{ fontSize: 12 }}>🏃 {d.cardio}</p>}
+
+          <ul>
+            {d.exercises.map((e, j) => (
+              <li key={j}>
+                {e.name} — {e.sets}x{e.reps}
+                <input
+                  type="number"
+                  placeholder="weight"
+                  value={e.weight}
+                  onChange={(ev) =>
+                    updateWeight(i, j, Number(ev.target.value))
+                  }
+                  style={{ marginLeft: 10, width: 70 }}
+                />
+              </li>
+            ))}
+          </ul>
 
           <button onClick={() => mark(i, "done")}>Done</button>
           <button onClick={() => mark(i, "miss")} style={{ marginLeft: 10 }}>

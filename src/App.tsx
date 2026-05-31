@@ -81,7 +81,7 @@ function buildPlan(mode: Mode, history: DayPlan[] = []): DayPlan[] {
 
   const lastMuscle = history[0]?.muscleGroup;
 
-  return baseWeek.map((d, i) => {
+  return baseWeek.map((d, _i) => {
     if (d.muscleGroup === "rest") {
       return {
         ...d,

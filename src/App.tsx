@@ -10,7 +10,7 @@ type Exercise = {
   repsCompleted?: number; // hotel only
   muscle: string;
   weighted: boolean;
-};
+}; 
 
 type DayPlan = {
   day: string;

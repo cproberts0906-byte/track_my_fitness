@@ -105,7 +105,6 @@ function makeExercise(name: string, muscle: string, weighted: boolean): Exercise
   return {
     name,
     sets: 3,
-    reps: 10,
     muscle,
     weighted,
     weight: weighted ? 0 : undefined,
